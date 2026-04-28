@@ -15,7 +15,7 @@ Dibuat dengan gaya desain **Neo-Brutalism**, aplikasi ini fokus pada performa, k
 > *(Opsional - tambahkan jika sudah deploy ke GitHub Pages)*
 
 ```bash
-https://username.github.io/neoreader
+https://koswara0790asep.github.io/neoreader
 ```
 
 ---
@@ -124,7 +124,7 @@ index.html
 1. Clone repository:
 
 ```bash
-git clone https://github.com/username/neoreader.git
+git clone https://github.com/koswara0790asep/neoreader.git
 ```
 
 2. Masuk ke folder project:
