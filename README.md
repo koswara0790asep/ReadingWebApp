@@ -12,8 +12,6 @@ Dibuat dengan gaya desain **Neo-Brutalism**, aplikasi ini fokus pada performa, k
 
 ## 🌐 Demo
 
-> *(Opsional - tambahkan jika sudah deploy ke GitHub Pages)*
-
 ```bash
 https://koswara0790asep.github.io/ReadingWebApp
 ```
