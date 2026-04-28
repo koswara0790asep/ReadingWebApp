@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NeoReader — Dokumen & Musik</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet" />
+  <style>
+    /*
+      NEO-BRUTALISM PALETTE
+      80% → #F5F0E8  warm cream  (backgrounds & surfaces)
+      15% → #1A1A1A  near-black  (ink, borders, structure)
+       5% → #FF3F00 + #FFD60A    (brutal accent pair)
+    */
+    :root {
+      --bg:        #F5F0E8;
+      --ink:       #1A1A1A;
+      --accent:    #FF3F00;
+      --accent2:   #FFD60A;
+      --surface:   #EDE8DF;
+      --border:    3px solid #1A1A1A;
+      --border2:   2px solid #1A1A1A;
+      --shadow:    4px 4px 0 #1A1A1A;
+      --shadow-lg: 6px 6px 0 #1A1A1A;
+      --font-head: 'Bebas Neue', sans-serif;
+      --font-mono: 'Space Mono', monospace;
+      --font-body: 'DM Mono', monospace;
+      --sw: 230px;   /* sidebar width */
+      --mw: 248px;   /* music panel width */
+      --ease: 0.15s cubic-bezier(.17,.67,.35,1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%; background: var(--bg); color: var(--ink);
+      font-family: var(--font-body); font-size: 14px; overflow: hidden;
+    }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 7px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--ink); }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+    /* ── GRID ── */
+    #app {
+      display: grid;
+      grid-template-columns: var(--sw) 1fr var(--mw);
+      grid-template-rows: 54px 1fr;
+      height: 100vh;
+      border: var(--border);
+    }
+
+    /* ── TOPBAR ── */
+    #topbar {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: var(--border);
+      background: var(--ink); color: var(--bg);
+      padding: 0 18px; position: relative; z-index: 20;
+    }
+    #topbar::after {
+      content: ''; position: absolute; bottom: -5px; left: 0;
+      width: 100%; height: 5px; z-index: 1;
+      background: repeating-linear-gradient(
+        90deg, var(--accent) 0 24px, var(--accent2) 24px 48px, var(--ink) 48px 72px
+      );
+    }
+    .logo {
+      font-family: var(--font-head); font-size: 26px; letter-spacing: 3px;
+      color: var(--bg); user-select: none; flex-shrink: 0;
+    }
+    .logo span { color: var(--accent); }
+    #doc-title {
+      font-family: var(--font-head); font-size: 18px; letter-spacing: 2px;
+      color: var(--accent2); flex: 1; text-align: center; padding: 0 12px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase;
+    }
+    #storage-pill {
+      display: flex; align-items: center; gap: 6px;
+      font-family: var(--font-mono); font-size: 10px; color: rgba(245,240,232,.65);
+      border: 1px solid rgba(245,240,232,.2); padding: 4px 10px; flex-shrink: 0;
+    }
+    #storage-pill .sdot { width: 7px; height: 7px; background: var(--accent2); flex-shrink: 0; }
+    #hamburger {
+      display: none; background: none; border: var(--border2); border-color: var(--bg);
+      color: var(--bg); padding: 5px 9px; cursor: pointer; font-size: 16px;
+      transition: var(--ease); margin-left: 8px;
+    }
+    #hamburger:hover { background: var(--accent); border-color: var(--accent); }
+
+    /* ── SHARED PANEL HEADER ── */
+    .panel-header {
+      padding: 12px 14px 10px; border-bottom: var(--border);
+      background: var(--ink); color: var(--bg); flex-shrink: 0;
+      display: flex; flex-direction: column; gap: 0;
+    }
+    .ph-row { display: flex; align-items: center; justify-content: space-between; }
+    .panel-header h2 { font-family: var(--font-head); font-size: 17px; letter-spacing: 2px; }
+    .badge {
+      background: var(--accent); color: var(--bg);
+      font-size: 10px; font-weight: 700; padding: 2px 8px; border: 2px solid var(--bg);
+    }
+    /* mini storage bar inside header */
+    .sbar-wrap { width: 100%; height: 3px; background: rgba(245,240,232,.18); margin-top: 8px; }
+    .sbar { height: 100%; background: var(--accent2); transition: width .5s; max-width: 100%; }
+
+    /* drop zone */
+    .drop-zone {
+      margin: 10px 12px; border: 3px dashed var(--ink); padding: 9px 8px;
+      text-align: center; font-size: 10px; font-family: var(--font-mono);
+      cursor: pointer; transition: var(--ease); flex-shrink: 0;
+      background: transparent; color: var(--ink); line-height: 1.6; display: block;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    .drop-zone input { display: none; }
+
+    /* store size label */
+    .store-label {
+      padding: 3px 12px 7px; font-size: 9px; font-family: var(--font-mono);
+      color: var(--ink); opacity: .5; display: flex; justify-content: space-between;
+      flex-shrink: 0; border-bottom: 2px solid var(--ink);
+    }
+
+    /* ── SIDEBAR DOKUMEN ── */
+    #sidebar {
+      border-right: var(--border); display: flex; flex-direction: column;
+      overflow: hidden; background: var(--bg); transition: transform var(--ease);
+    }
+    #doc-list { overflow-y: auto; flex: 1; padding: 6px 0; }
+    .doc-item {
+      display: flex; align-items: center; gap: 9px; padding: 10px 12px;
+      cursor: pointer; border-left: 4px solid transparent; transition: var(--ease);
+      animation: fadeUp .2s ease both;
+    }
+    .doc-item:hover  { background: var(--ink); color: var(--bg); border-left-color: var(--accent); }
+    .doc-item.active { background: var(--accent); color: var(--bg); border-left-color: var(--accent2); }
+    .doc-icon { font-size: 18px; flex-shrink: 0; }
+    .d-info { overflow: hidden; flex: 1; }
+    .d-name {
+      font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+      text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .d-meta { font-size: 9px; opacity: .58; margin-top: 2px; }
+    .item-del {
+      background: none; border: none; cursor: pointer; color: inherit;
+      opacity: 0; padding: 2px 5px; font-size: 13px; transition: var(--ease); flex-shrink: 0;
+    }
+    .doc-item:hover .item-del,
+    .music-item:hover .item-del { opacity: .65; }
+    .item-del:hover { opacity: 1 !important; color: var(--accent2); }
+
+    /* ── MAIN VIEWER ── */
+    #main { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+    #viewer-toolbar {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      padding: 7px 14px; border-bottom: var(--border); flex-shrink: 0;
+    }
+    .t-btn {
+      background: var(--ink); color: var(--bg); border: var(--border2); border-color: var(--ink);
+      padding: 5px 12px; font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+      cursor: pointer; text-transform: uppercase; letter-spacing: 1px;
+      transition: var(--ease); box-shadow: var(--shadow);
+    }
+    .t-btn:hover {
+      background: var(--accent); border-color: var(--accent);
+      transform: translate(-2px,-2px); box-shadow: var(--shadow-lg);
+    }
+    .t-btn:active { transform: translate(0,0); box-shadow: none; }
+    .t-sep { flex: 1; }
+    #zoom-info {
+      font-family: var(--font-mono); font-size: 10px; padding: 4px 8px;
+      border: var(--border2); background: var(--bg); min-width: 48px; text-align: center;
+    }
+    #search-doc {
+      background: var(--bg); border: var(--border2); padding: 5px 10px;
+      font-family: var(--font-mono); font-size: 11px; color: var(--ink);
+      width: 150px; outline: none; transition: var(--ease);
+    }
+    #search-doc:focus { border-color: var(--accent); box-shadow: 3px 3px 0 var(--accent); }
+
+    #viewer-wrap { flex: 1; overflow: auto; }
+    #viewer-inner { min-height: 100%; display: flex; align-items: flex-start; justify-content: center; padding: 22px; }
+    #viewer-content {
+      width: 100%; max-width: 780px; background: #fff; border: var(--border);
+      box-shadow: var(--shadow-lg); min-height: 480px; padding: 40px 48px;
+      font-family: 'Georgia', serif; font-size: 15px; line-height: 1.85; color: var(--ink);
+      transform-origin: top center; transition: transform .2s;
+    }
+    #viewer-content h1, #viewer-content h2, #viewer-content h3 {
+      font-family: var(--font-head); letter-spacing: 1px; margin: 1em 0 .4em;
+    }
+    #viewer-content p { margin-bottom: 1em; }
+    #viewer-content mark { background: var(--accent2); padding: 0 2px; }
+
+    /* empty state */
+    #empty-state {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 340px; gap: 14px; opacity: .3; user-select: none;
+    }
+    .es-icon { font-size: 60px; }
+    #empty-state p { font-family: var(--font-head); font-size: 20px; letter-spacing: 3px; text-align: center; }
+    #empty-state small { font-family: var(--font-body); font-size: 11px; letter-spacing: 0; }
+
+    /* spinner */
+    .spinner {
+      display: inline-block; width: 20px; height: 20px;
+      border: 3px solid var(--ink); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── MUSIC SIDEBAR ── */
+    #music-sidebar {
+      border-left: var(--border); display: flex; flex-direction: column;
+      overflow: hidden; background: var(--bg); transition: transform var(--ease);
+    }
+    #music-list { flex: 1; overflow-y: auto; padding: 6px 0; }
+    .music-item {
+      display: flex; align-items: center; gap: 9px; padding: 10px 12px;
+      cursor: pointer; border-left: 4px solid transparent; transition: var(--ease);
+      animation: fadeUp .2s ease both;
+    }
+    .music-item:hover  { background: var(--ink); color: var(--bg); border-left-color: var(--accent2); }
+    .music-item.active { background: var(--ink); color: var(--accent2); border-left-color: var(--accent2); }
+    .music-item.playing .music-icon { animation: bounce .55s infinite alternate; }
+    @keyframes bounce { from { transform: scale(1); } to { transform: scale(1.35); } }
+    .music-icon { font-size: 18px; flex-shrink: 0; }
+    .m-info { overflow: hidden; flex: 1; }
+    .m-name {
+      font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+      text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .m-meta { font-size: 9px; opacity: .58; margin-top: 2px; }
+
+    /* ── MUSIC PLAYER ── */
+    #music-player {
+      border-top: var(--border); padding: 11px 13px;
+      background: var(--ink); color: var(--bg); flex-shrink: 0;
+    }
+    #now-playing {
+      font-family: var(--font-head); font-size: 13px; letter-spacing: 1.5px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      color: var(--accent2); margin-bottom: 7px; min-height: 18px;
+    }
+    #progress-wrap {
+      position: relative; height: 6px; background: rgba(245,240,232,.18);
+      cursor: pointer; margin-bottom: 8px; border: 1px solid rgba(245,240,232,.22);
+    }
+    #progress-bar {
+      height: 100%; background: var(--accent); width: 0%; transition: width .25s linear; position: relative;
+    }
+    #progress-bar::after {
+      content: ''; position: absolute; right: -5px; top: -4px;
+      width: 10px; height: 10px; background: var(--accent2); border: 2px solid var(--bg);
+    }
+    #time-info {
+      display: flex; justify-content: space-between; font-size: 9px;
+      font-family: var(--font-mono); margin-bottom: 9px; opacity: .6;
+    }
+    #player-controls { display: flex; align-items: center; justify-content: center; gap: 5px; }
+    .ctrl-btn {
+      background: none; border: var(--border2); border-color: var(--bg); color: var(--bg);
+      width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 13px; transition: var(--ease);
+    }
+    .ctrl-btn:hover { background: var(--bg); color: var(--ink); }
+    .ctrl-btn.on { background: var(--accent2); border-color: var(--accent2); color: var(--ink); }
+    #play-btn {
+      width: 40px; height: 40px; background: var(--accent); border-color: var(--accent); font-size: 17px;
+    }
+    #play-btn:hover { background: var(--accent2); border-color: var(--accent2); color: var(--ink); }
+    #volume-row { display: flex; align-items: center; gap: 7px; margin-top: 9px; }
+    #volume-row span { font-size: 13px; }
+    #vol-slider {
+      flex: 1; -webkit-appearance: none; height: 4px;
+      background: rgba(245,240,232,.28); outline: none; cursor: pointer;
+    }
+    #vol-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 13px; height: 13px;
+      background: var(--accent2); border: 2px solid var(--bg); cursor: pointer;
+    }
+
+    /* ── CONFIRM MODAL ── */
+    #modal-bg {
+      position: fixed; inset: 0; background: rgba(26,26,26,.55);
+      z-index: 500; display: none; align-items: center; justify-content: center;
+    }
+    #modal-bg.show { display: flex; }
+    #modal-box {
+      background: var(--bg); border: var(--border); box-shadow: var(--shadow-lg);
+      padding: 28px 30px; max-width: 360px; width: 92%;
+    }
+    #modal-box h3 { font-family: var(--font-head); font-size: 22px; letter-spacing: 2px; margin-bottom: 10px; }
+    #modal-box p  { font-size: 12px; line-height: 1.7; margin-bottom: 18px; }
+    .modal-actions { display: flex; gap: 10px; }
+    .modal-actions button {
+      flex: 1; padding: 8px; font-family: var(--font-mono); font-size: 11px;
+      font-weight: 700; text-transform: uppercase; cursor: pointer;
+      border: var(--border2); transition: var(--ease);
+    }
+    #modal-confirm { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+    #modal-confirm:hover { background: var(--ink); border-color: var(--ink); }
+    #modal-cancel  { background: var(--bg); border-color: var(--ink); color: var(--ink); }
+    #modal-cancel:hover { background: var(--ink); color: var(--bg); }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; bottom: 22px; left: 50%; z-index: 9999; pointer-events: none;
+      transform: translateX(-50%) translateY(80px); transition: transform .3s cubic-bezier(.17,.67,.35,1);
+      background: var(--ink); color: var(--bg); font-family: var(--font-mono); font-size: 11px;
+      padding: 9px 20px; border: 2px solid var(--accent); box-shadow: var(--shadow-lg);
+      white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.ok   { border-color: var(--accent2); }
+    #toast.err  { border-color: #ff5555; }
+
+    /* ── MOBILE OVERLAY ── */
+    #overlay {
+      display: none; position: fixed; inset: 0; background: rgba(26,26,26,.45);
+      z-index: 90; opacity: 0; pointer-events: none; transition: opacity .2s;
+    }
+    #overlay.show { opacity: 1; pointer-events: all; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 900px) { :root { --sw: 205px; --mw: 215px; } }
+    @media (max-width: 720px) {
+      html, body { overflow: hidden; }
+      #app { grid-template-columns: 1fr; grid-template-rows: 54px 1fr; }
+      #sidebar {
+        position: fixed; top: 54px; left: 0; width: 272px;
+        height: calc(100vh - 54px); z-index: 100; transform: translateX(-100%);
+      }
+      #sidebar.open { transform: translateX(0); }
+      #music-sidebar {
+        position: fixed; top: 54px; right: 0; width: 272px;
+        height: calc(100vh - 54px); z-index: 100; transform: translateX(100%);
+      }
+      #music-sidebar.open { transform: translateX(0); }
+      #overlay { display: block; }
+      #hamburger { display: flex; }
+      #main { grid-column: 1; }
+      #viewer-content { padding: 20px 16px; font-size: 14px; }
+      #search-doc { width: 100%; }
+      #storage-pill { display: none; }
+    }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
+
+    @media print {
+      #sidebar, #music-sidebar, #topbar, #viewer-toolbar { display: none !important; }
+      #app { display: block; }
+      #main, #viewer-wrap { height: auto; overflow: visible; }
+      #viewer-content { box-shadow: none; border: none; max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- TOPBAR -->
+  <header id="topbar">
+    <div class="logo">NEO<span>READER</span></div>
+    <div id="doc-title">PILIH DOKUMEN</div>
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+      <div id="storage-pill"><div class="sdot"></div><span id="storage-text">IndexedDB</span></div>
+      <button id="hamburger" onclick="toggleMobilePanels()">☰</button>
+    </div>
+  </header>
+
+  <!-- SIDEBAR DOKUMEN -->
+  <aside id="sidebar">
+    <div class="panel-header">
+      <div class="ph-row">
+        <h2>📁 DOKUMEN</h2>
+        <span class="badge" id="doc-count">0</span>
+      </div>
+      <div class="sbar-wrap"><div class="sbar" id="doc-sbar" style="width:0%"></div></div>
+    </div>
+    <label class="drop-zone" id="doc-drop">
+      <input type="file" id="doc-file-input" multiple accept=".pdf,.txt,.md,.html,.rtf" />
+      + UPLOAD / DROP DOKUMEN<br/>
+      <span style="opacity:.5;font-size:9px">PDF · TXT · MD · HTML · RTF</span>
+    </label>
+    <div class="store-label">
+      <span>FOLDER DOKUMEN</span>
+      <span id="doc-size-lbl">0 B</span>
+    </div>
+    <div id="doc-list"></div>
+  </aside>
+
+  <!-- MAIN VIEWER -->
+  <main id="main">
+    <div id="viewer-toolbar">
+      <button class="t-btn" onclick="zoomChange(-0.1)">− ZOOM</button>
+      <span id="zoom-info">100%</span>
+      <button class="t-btn" onclick="zoomChange(0.1)">+ ZOOM</button>
+      <button class="t-btn" onclick="resetZoom()">RESET</button>
+      <div class="t-sep"></div>
+      <input id="search-doc" type="search" placeholder="🔍 Cari dalam dokumen…" oninput="searchText(this.value)" />
+      <button class="t-btn" id="btn-mob-doc" onclick="openPanel('sidebar')" style="display:none">📄 DOC</button>
+      <button class="t-btn" id="btn-mob-mus" onclick="openPanel('music')"   style="display:none">🎵 MUS</button>
+    </div>
+    <div id="viewer-wrap">
+      <div id="viewer-inner">
+        <div id="viewer-content">
+          <div id="empty-state">
+            <div class="es-icon">📂</div>
+            <p>BELUM ADA<br/>DOKUMEN DIPILIH</p>
+            <small>Upload & pilih dokumen dari panel kiri</small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- MUSIC SIDEBAR -->
+  <aside id="music-sidebar">
+    <div class="panel-header">
+      <div class="ph-row">
+        <h2>🎵 MUSIK</h2>
+        <span class="badge" id="music-count">0</span>
+      </div>
+      <div class="sbar-wrap"><div class="sbar" id="mus-sbar" style="width:0%"></div></div>
+    </div>
+    <label class="drop-zone" id="music-drop">
+      <input type="file" id="music-file-input" multiple accept="audio/*" />
+      + UPLOAD / DROP MUSIK<br/>
+      <span style="opacity:.5;font-size:9px">MP3 · WAV · OGG · FLAC · AAC</span>
+    </label>
+    <div class="store-label">
+      <span>FOLDER MUSIK</span>
+      <span id="mus-size-lbl">0 B</span>
+    </div>
+    <div id="music-list"></div>
+
+    <div id="music-player">
+      <div id="now-playing">— TIDAK ADA MUSIK —</div>
+      <div id="progress-wrap" onclick="seekTo(event)">
+        <div id="progress-bar"></div>
+      </div>
+      <div id="time-info">
+        <span id="time-cur">0:00</span>
+        <span id="time-dur">0:00</span>
+      </div>
+      <div id="player-controls">
+        <button class="ctrl-btn" id="btn-shuffle" onclick="toggleShuffle()" title="Shuffle">⇄</button>
+        <button class="ctrl-btn" onclick="prevTrack()" title="Sebelumnya">⏮</button>
+        <button class="ctrl-btn" id="play-btn" onclick="togglePlay()" title="Play/Pause">▶</button>
+        <button class="ctrl-btn" onclick="nextTrack()" title="Selanjutnya">⏭</button>
+        <button class="ctrl-btn" id="btn-repeat" onclick="toggleRepeat()" title="Repeat">↻</button>
+      </div>
+      <div id="volume-row">
+        <span>🔈</span>
+        <input type="range" id="vol-slider" min="0" max="1" step="0.02" value="0.8" oninput="setVolume(this.value)" />
+        <span>🔊</span>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- Mobile overlay -->
+<div id="overlay" onclick="closeAllPanels()"></div>
+
+<!-- Confirm delete modal -->
+<div id="modal-bg">
+  <div id="modal-box">
+    <h3 id="modal-title">HAPUS FILE?</h3>
+    <p  id="modal-msg">Yakin ingin menghapus item ini dari penyimpanan permanen?</p>
+    <div class="modal-actions">
+      <button id="modal-confirm" onclick="modalConfirm()">HAPUS PERMANEN</button>
+      <button id="modal-cancel"  onclick="closeModal()">BATAL</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<audio id="audio-el"></audio>
+
+<script>
+'use strict';
+
+/* ══════════════════════════════════════════════
+   INDEXEDDB CONFIG
+   Dua object store terpisah:
+     "documents"  → file dokumen (PDF, TXT, MD, HTML, RTF)
+     "musics"     → file audio   (MP3, WAV, OGG, dll)
+   Setiap record menyimpan ArrayBuffer (blob) +
+   metadata lengkap. BlobURL di-cache per sesi.
+══════════════════════════════════════════════ */
+const DB_NAME    = 'NeoReaderDB';
+const DB_VERSION = 1;
+const STORE_DOC  = 'documents';
+const STORE_MUS  = 'musics';
+
+/* ══ STATE ══ */
+let db;
+let documents    = [];   // metadata in-memory
+let musics       = [];   // metadata in-memory
+let blobCache    = {};   // id → objectURL (per-session)
+let currentDoc   = null;
+let currentTrack = null;
+let zoom         = 1;
+let isPlaying    = false;
+let isShuffle    = false;
+let isRepeat     = false;
+let pendingDel   = null; // { store, id, name }
+
+const audio = document.getElementById('audio-el');
+
+/* ══ INDEXEDDB HELPERS ══ */
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = ev => {
+      const d = ev.target.result;
+      if (!d.objectStoreNames.contains(STORE_DOC))
+        d.createObjectStore(STORE_DOC, { keyPath: 'id' });
+      if (!d.objectStoreNames.contains(STORE_MUS))
+        d.createObjectStore(STORE_MUS, { keyPath: 'id' });
+    };
+    req.onsuccess = ev => resolve(ev.target.result);
+    req.onerror   = ev => reject(ev.target.error);
+  });
+}
+
+function idbGetAll(store) {
+  return new Promise((res, rej) => {
+    const req = db.transaction(store, 'readonly').objectStore(store).getAll();
+    req.onsuccess = () => res(req.result);
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+function idbGet(store, id) {
+  return new Promise((res, rej) => {
+    const req = db.transaction(store, 'readonly').objectStore(store).get(id);
+    req.onsuccess = () => res(req.result);
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+function idbPut(store, item) {
+  return new Promise((res, rej) => {
+    const req = db.transaction(store, 'readwrite').objectStore(store).put(item);
+    req.onsuccess = () => res();
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+function idbDelete(store, id) {
+  return new Promise((res, rej) => {
+    const req = db.transaction(store, 'readwrite').objectStore(store).delete(id);
+    req.onsuccess = () => res();
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+/* partial update — preserves blob, patches other fields */
+async function idbPatch(store, id, fields) {
+  const rec = await idbGet(store, id);
+  if (rec) await idbPut(store, Object.assign(rec, fields));
+}
+
+/* ══ UTILS ══ */
+function uid()      { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function esc(s)     { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtSize(b) {
+  if (!b) return '0 B';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1)+' KB';
+  return (b/1048576).toFixed(1)+' MB';
+}
+function fmtTime(s) {
+  if (!isFinite(s)||s<0) return '0:00';
+  return `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+}
+function relTime(ts) {
+  const m = Math.floor((Date.now()-ts)/60000);
+  if (m<1) return 'baru saja';
+  if (m<60) return `${m}m lalu`;
+  const h = Math.floor(m/60);
+  if (h<24) return `${h}j lalu`;
+  return `${Math.floor(h/24)}h lalu`;
+}
+
+/* ══ TOAST ══ */
+let _tt;
+function toast(msg, type='', dur=2800) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show'+(type?' '+type:'');
+  clearTimeout(_tt);
+  _tt = setTimeout(()=>{ el.className=''; }, dur);
+}
+
+/* ══ BLOB URL CACHE ══ */
+function makeBlobURL(id, ab, mime) {
+  if (!blobCache[id]) blobCache[id] = URL.createObjectURL(new Blob([ab],{type:mime}));
+  return blobCache[id];
+}
+function dropBlobURL(id) {
+  if (blobCache[id]) { URL.revokeObjectURL(blobCache[id]); delete blobCache[id]; }
+}
+
+/* ══ STORAGE INFO ══ */
+async function updateStorageInfo() {
+  const docBytes = documents.reduce((a,d)=>a+(d.size||0),0);
+  const musBytes = musics.reduce((a,m)=>a+(m.size||0),0);
+  document.getElementById('doc-size-lbl').textContent = fmtSize(docBytes);
+  document.getElementById('mus-size-lbl').textContent = fmtSize(musBytes);
+
+  const CAP = 100*1048576; // 100 MB visual cap
+  document.getElementById('doc-sbar').style.width = Math.min(docBytes/CAP*100,100)+'%';
+  document.getElementById('mus-sbar').style.width = Math.min(musBytes/CAP*100,100)+'%';
+
+  // Storage Quota API
+  if (navigator.storage?.estimate) {
+    try {
+      const {usage, quota} = await navigator.storage.estimate();
+      const pct = Math.round(usage/quota*100);
+      document.getElementById('storage-text').textContent =
+        `💾 ${fmtSize(usage)} / ${fmtSize(quota)} · ${pct}%`;
+      if (usage/quota > 0.85) toast('⚠️ Penyimpanan hampir penuh!','err',6000);
+    } catch { document.getElementById('storage-text').textContent = `💾 ${fmtSize(docBytes+musBytes)}`; }
+  } else {
+    document.getElementById('storage-text').textContent = `💾 ${fmtSize(docBytes+musBytes)}`;
+  }
+}
+
+/* ════════════════════════════════════════════
+   FOLDER DOKUMEN  (IndexedDB store: "documents")
+════════════════════════════════════════════ */
+const docDropEl  = document.getElementById('doc-drop');
+const docInputEl = document.getElementById('doc-file-input');
+
+docInputEl.addEventListener('change', e => handleDocFiles(e.target.files));
+docDropEl.addEventListener('dragover',  e => { e.preventDefault(); docDropEl.classList.add('drag-over'); });
+docDropEl.addEventListener('dragleave', ()=> docDropEl.classList.remove('drag-over'));
+docDropEl.addEventListener('drop', e => {
+  e.preventDefault(); docDropEl.classList.remove('drag-over');
+  handleDocFiles(e.dataTransfer.files);
+});
+
+async function handleDocFiles(files) {
+  let added = 0;
+  for (const file of files) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['pdf','txt','md','html','rtf'].includes(ext)) {
+      toast(`⚠️ .${ext} tidak didukung`,'err'); continue;
+    }
+    // Check duplicate by name
+    if (documents.find(d=>d.name===file.name)) {
+      toast(`⚠️ "${file.name}" sudah ada`,'err'); continue;
+    }
+    const id = uid();
+    const ab = await file.arrayBuffer();
+    const rec = {
+      id, name: file.name, ext,
+      size: file.size, addedAt: Date.now(),
+      mime: file.type || 'application/octet-stream',
+      blob: ab
+    };
+    await idbPut(STORE_DOC, rec);
+    // push lightweight metadata only
+    documents.push({ id, name: rec.name, ext, size: rec.size, addedAt: rec.addedAt, mime: rec.mime });
+    added++;
+  }
+  docInputEl.value = '';
+  if (added) toast(`📄 ${added} dokumen disimpan ke folder`,'ok');
+  renderDocList();
+  updateStorageInfo();
+}
+
+async function loadDocuments() {
+  const rows = await idbGetAll(STORE_DOC);
+  documents = rows.map(r => ({ id:r.id, name:r.name, ext:r.ext, size:r.size, addedAt:r.addedAt, mime:r.mime }));
+  renderDocList();
+}
+
+function renderDocList() {
+  const list = document.getElementById('doc-list');
+  document.getElementById('doc-count').textContent = documents.length;
+  list.innerHTML = '';
+  if (!documents.length) {
+    list.innerHTML = `<div style="padding:22px 12px;text-align:center;opacity:.32;font-size:10px;font-family:var(--font-mono)">
+      FOLDER DOKUMEN KOSONG<br/>Upload file di atas</div>`; return;
+  }
+  const icons = { txt:'📝', md:'📋', html:'🌐', rtf:'📃', pdf:'📕' };
+  [...documents].reverse().forEach((doc, i) => {
+    const div = document.createElement('div');
+    div.className = 'doc-item' + (currentDoc?.id===doc.id?' active':'');
+    div.style.animationDelay = i*30+'ms';
+    div.innerHTML = `
+      <span class="doc-icon">${icons[doc.ext]||'📄'}</span>
+      <div class="d-info">
+        <div class="d-name">${esc(doc.name)}</div>
+        <div class="d-meta">${fmtSize(doc.size)} · .${doc.ext.toUpperCase()} · ${relTime(doc.addedAt)}</div>
+      </div>
+      <button class="item-del" data-id="${doc.id}" data-name="${esc(doc.name)}" data-store="doc" title="Hapus dari folder">✕</button>`;
+    div.addEventListener('click', ev => { if (!ev.target.closest('.item-del')) openDoc(doc.id); });
+    div.querySelector('.item-del').addEventListener('click', ev => {
+      ev.stopPropagation();
+      confirmDel('doc', doc.id, doc.name);
+    });
+    list.appendChild(div);
+  });
+}
+
+async function openDoc(id) {
+  // Show loading
+  document.getElementById('viewer-content').innerHTML =
+    `<div style="display:flex;align-items:center;justify-content:center;height:280px;gap:12px;">
+       <div class="spinner"></div>
+       <span style="font-family:var(--font-mono);font-size:11px;">MEMUAT DARI PENYIMPANAN…</span>
+     </div>`;
+
+  let row;
+  try { row = await idbGet(STORE_DOC, id); } catch {}
+  if (!row) { toast('❌ Dokumen tidak ditemukan di penyimpanan','err'); return; }
+
+  currentDoc = documents.find(d=>d.id===id) || row;
+  document.getElementById('doc-title').textContent = row.name.replace(/\.[^.]+$/,'').toUpperCase();
+
+  const vc = document.getElementById('viewer-content');
+  vc.innerHTML = '';
+
+  if (row.ext === 'pdf') {
+    const url = makeBlobURL(id, row.blob, row.mime||'application/pdf');
+    const iframe = Object.assign(document.createElement('iframe'), {
+      src: url, title: row.name
+    });
+    iframe.style.cssText = 'width:100%;height:80vh;border:none;';
+    vc.appendChild(iframe);
+
+  } else if (row.ext === 'html') {
+    const text = new TextDecoder().decode(row.blob);
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'width:100%;height:80vh;border:none;';
+    iframe.srcdoc = text;
+    vc.appendChild(iframe);
+
+  } else {
+    let text = new TextDecoder().decode(row.blob);
+    let html = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    if (row.ext === 'md') {
+      html = html
+        .replace(/^#### (.+)$/gm,'<h4>$1</h4>')
+        .replace(/^### (.+)$/gm,'<h3>$1</h3>')
+        .replace(/^## (.+)$/gm,'<h2>$1</h2>')
+        .replace(/^# (.+)$/gm,'<h1>$1</h1>')
+        .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g,'<em>$1</em>')
+        .replace(/`([^`]+)`/g,'<code style="background:#eee;padding:1px 5px;border:1px solid #1A1A1A;font-family:var(--font-mono);font-size:11px">$1</code>')
+        .replace(/^---+$/gm,'<hr style="border:none;border-top:3px solid var(--ink);margin:1.4em 0">')
+        .replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>');
+      html = '<p>'+html+'</p>';
+    } else {
+      html = html.replace(/\n/g,'<br>');
+    }
+    vc.innerHTML = `<div>${html}</div>`;
+  }
+
+  renderDocList();
+  resetZoom();
+  document.getElementById('search-doc').value = '';
+  toast(`📖 "${row.name}"`,'ok');
+  if (window.innerWidth<=720) closeAllPanels();
+}
+
+/* ════════════════════════════════════════════
+   FOLDER MUSIK  (IndexedDB store: "musics")
+════════════════════════════════════════════ */
+const musDropEl  = document.getElementById('music-drop');
+const musInputEl = document.getElementById('music-file-input');
+
+musInputEl.addEventListener('change', e => handleMusicFiles(e.target.files));
+musDropEl.addEventListener('dragover',  e => { e.preventDefault(); musDropEl.classList.add('drag-over'); });
+musDropEl.addEventListener('dragleave', ()=> musDropEl.classList.remove('drag-over'));
+musDropEl.addEventListener('drop', e => {
+  e.preventDefault(); musDropEl.classList.remove('drag-over');
+  handleMusicFiles(e.dataTransfer.files);
+});
+
+async function handleMusicFiles(files) {
+  let added = 0;
+  for (const file of files) {
+    if (!file.type.startsWith('audio/')) { toast(`⚠️ "${file.name}" bukan audio`,'err'); continue; }
+    const baseName = file.name.replace(/\.[^.]+$/,'');
+    if (musics.find(m=>m.name===baseName)) { toast(`⚠️ "${baseName}" sudah ada`,'err'); continue; }
+    const id = uid();
+    const ab = await file.arrayBuffer();
+    const rec = {
+      id, name: baseName, ext: file.name.split('.').pop().toLowerCase(),
+      size: file.size, addedAt: Date.now(),
+      mime: file.type||'audio/mpeg', duration: 0, blob: ab
+    };
+    await idbPut(STORE_MUS, rec);
+    const meta = { id, name:rec.name, ext:rec.ext, size:rec.size, addedAt:rec.addedAt, mime:rec.mime, duration:0 };
+    musics.push(meta);
+
+    // Probe duration asynchronously, then patch DB
+    const url = makeBlobURL(id, ab, rec.mime);
+    const tmp = new Audio(url);
+    tmp.addEventListener('loadedmetadata', async () => {
+      meta.duration = tmp.duration;
+      await idbPatch(STORE_MUS, id, { duration: tmp.duration });
+      renderMusicList();
+    });
+    added++;
+  }
+  musInputEl.value = '';
+  if (added) toast(`🎵 ${added} musik disimpan ke folder`,'ok');
+  renderMusicList();
+  updateStorageInfo();
+}
+
+async function loadMusics() {
+  const rows = await idbGetAll(STORE_MUS);
+  musics = rows.map(r=>({ id:r.id, name:r.name, ext:r.ext, size:r.size, addedAt:r.addedAt, mime:r.mime, duration:r.duration||0 }));
+  // Pre-cache all blob URLs so playback is instant
+  for (const row of rows) makeBlobURL(row.id, row.blob, row.mime);
+  renderMusicList();
+}
+
+function renderMusicList() {
+  const list = document.getElementById('music-list');
+  document.getElementById('music-count').textContent = musics.length;
+  list.innerHTML = '';
+  if (!musics.length) {
+    list.innerHTML = `<div style="padding:22px 12px;text-align:center;opacity:.32;font-size:10px;font-family:var(--font-mono)">
+      FOLDER MUSIK KOSONG<br/>Upload audio di atas</div>`; return;
+  }
+  [...musics].reverse().forEach((m, i) => {
+    const isActive = currentTrack?.id===m.id;
+    const div = document.createElement('div');
+    div.className = 'music-item'+(isActive?' active':'')+(isActive&&isPlaying?' playing':'');
+    div.style.animationDelay = i*30+'ms';
+    div.innerHTML = `
+      <span class="music-icon">🎵</span>
+      <div class="m-info">
+        <div class="m-name">${esc(m.name)}</div>
+        <div class="m-meta">${m.duration?fmtTime(m.duration):'—'} · ${fmtSize(m.size)} · ${relTime(m.addedAt)}</div>
+      </div>
+      <button class="item-del" title="Hapus dari folder">✕</button>`;
+    div.addEventListener('click', ev => { if (!ev.target.closest('.item-del')) playTrack(m.id); });
+    div.querySelector('.item-del').addEventListener('click', ev => {
+      ev.stopPropagation();
+      confirmDel('mus', m.id, m.name);
+    });
+    list.appendChild(div);
+  });
+}
+
+async function playTrack(id) {
+  const meta = musics.find(m=>m.id===id);
+  if (!meta) return;
+  if (!blobCache[id]) {
+    // reload blob from DB if not cached
+    try {
+      const row = await idbGet(STORE_MUS, id);
+      if (!row) { toast('❌ File musik tidak ada di penyimpanan','err'); return; }
+      makeBlobURL(id, row.blob, row.mime);
+    } catch { toast('❌ Gagal memuat musik','err'); return; }
+  }
+  currentTrack = meta;
+  audio.src    = blobCache[id];
+  audio.volume = parseFloat(document.getElementById('vol-slider').value);
+  audio.play().catch(()=>{});
+  isPlaying = true;
+  updatePlayerUI();
+  renderMusicList();
+  toast(`▶ ${meta.name}`);
+  if (window.innerWidth<=720) closeAllPanels();
+}
+
+/* ════════════════════════════════════════════
+   DELETE — MODAL KONFIRMASI
+════════════════════════════════════════════ */
+function confirmDel(store, id, name) {
+  pendingDel = { store, id, name };
+  document.getElementById('modal-title').textContent = 'HAPUS FILE?';
+  document.getElementById('modal-msg').textContent =
+    `"${name}" akan dihapus permanen dari folder ${store==='doc'?'DOKUMEN':'MUSIK'} di penyimpanan browser.`;
+  document.getElementById('modal-bg').classList.add('show');
+}
+function closeModal() {
+  document.getElementById('modal-bg').classList.remove('show');
+  pendingDel = null;
+}
+async function modalConfirm() {
+  if (!pendingDel) return;
+  const { store, id, name } = pendingDel;
+  closeModal();
+  try {
+    await idbDelete(store==='doc'?STORE_DOC:STORE_MUS, id);
+    dropBlobURL(id);
+    if (store==='doc') {
+      documents = documents.filter(d=>d.id!==id);
+      if (currentDoc?.id===id) {
+        currentDoc=null;
+        document.getElementById('doc-title').textContent='PILIH DOKUMEN';
+        document.getElementById('viewer-content').innerHTML=emptyHTML();
+      }
+      renderDocList();
+    } else {
+      musics = musics.filter(m=>m.id!==id);
+      if (currentTrack?.id===id) {
+        audio.pause(); audio.src=''; currentTrack=null; isPlaying=false; updatePlayerUI();
+      }
+      renderMusicList();
+    }
+    toast(`🗑️ "${name}" dihapus dari folder`,'');
+    updateStorageInfo();
+  } catch { toast('❌ Gagal menghapus file','err'); }
+}
+
+/* ════════════════════════════════════════════
+   VIEWER — ZOOM & SEARCH
+════════════════════════════════════════════ */
+function updateZoom() {
+  document.getElementById('zoom-info').textContent = Math.round(zoom*100)+'%';
+  document.getElementById('viewer-content').style.transform = `scale(${zoom})`;
+}
+function zoomChange(d) { zoom=Math.min(3,Math.max(0.4,zoom+d)); updateZoom(); }
+function resetZoom()   { zoom=1; updateZoom(); }
+
+function searchText(q) {
+  if (!currentDoc) return;
+  const vc = document.getElementById('viewer-content');
+  vc.querySelectorAll('mark').forEach(m=>m.replaceWith(m.textContent));
+  if (!q.trim()) return;
+  const walk = nd => {
+    if (nd.nodeType===3) {
+      const i = nd.textContent.toLowerCase().indexOf(q.toLowerCase());
+      if (i>=0) {
+        const mk=document.createElement('mark');
+        mk.textContent=nd.textContent.slice(i,i+q.length);
+        const f=document.createDocumentFragment();
+        f.appendChild(document.createTextNode(nd.textContent.slice(0,i)));
+        f.appendChild(mk);
+        f.appendChild(document.createTextNode(nd.textContent.slice(i+q.length)));
+        nd.parentNode.replaceChild(f,nd);
+      }
+    } else if (!['SCRIPT','STYLE','IFRAME'].includes(nd.nodeName)) {
+      [...nd.childNodes].forEach(walk);
+    }
+  };
+  walk(vc);
+}
+
+/* ════════════════════════════════════════════
+   AUDIO PLAYER
+════════════════════════════════════════════ */
+function togglePlay() {
+  if (!currentTrack) { if (musics.length) playTrack(musics[musics.length-1].id); return; }
+  isPlaying ? audio.pause() : audio.play().catch(()=>{});
+}
+function prevTrack() {
+  if (!musics.length) return;
+  if (!currentTrack) { playTrack(musics[0].id); return; }
+  const i=musics.findIndex(m=>m.id===currentTrack.id);
+  playTrack(musics[(i-1+musics.length)%musics.length].id);
+}
+function nextTrack() {
+  if (!musics.length) return;
+  if (!currentTrack) { playTrack(musics[0].id); return; }
+  if (isShuffle) { playTrack(musics[Math.floor(Math.random()*musics.length)].id); return; }
+  const i=musics.findIndex(m=>m.id===currentTrack.id);
+  playTrack(musics[(i+1)%musics.length].id);
+}
+function toggleShuffle() {
+  isShuffle=!isShuffle;
+  document.getElementById('btn-shuffle').classList.toggle('on',isShuffle);
+  toast(isShuffle?'🔀 Shuffle ON':'🔀 Shuffle OFF');
+}
+function toggleRepeat() {
+  isRepeat=!isRepeat;
+  document.getElementById('btn-repeat').classList.toggle('on',isRepeat);
+  audio.loop=isRepeat;
+  toast(isRepeat?'🔁 Repeat ON':'🔁 Repeat OFF');
+}
+function setVolume(v)  { audio.volume=parseFloat(v); }
+function seekTo(e)     {
+  if (!currentTrack||!audio.duration) return;
+  const r=e.currentTarget.getBoundingClientRect();
+  audio.currentTime=((e.clientX-r.left)/r.width)*audio.duration;
+}
+
+audio.addEventListener('timeupdate',()=>{
+  if (!audio.duration) return;
+  document.getElementById('progress-bar').style.width=(audio.currentTime/audio.duration*100)+'%';
+  document.getElementById('time-cur').textContent=fmtTime(audio.currentTime);
+  document.getElementById('time-dur').textContent=fmtTime(audio.duration);
+});
+audio.addEventListener('ended', ()=>{ if(!isRepeat) nextTrack(); });
+audio.addEventListener('play',  ()=>{ isPlaying=true;  updatePlayerUI(); renderMusicList(); });
+audio.addEventListener('pause', ()=>{ isPlaying=false; updatePlayerUI(); renderMusicList(); });
+
+function updatePlayerUI() {
+  document.getElementById('play-btn').textContent   = isPlaying?'⏸':'▶';
+  document.getElementById('now-playing').textContent = currentTrack ? currentTrack.name : '— TIDAK ADA MUSIK —';
+}
+
+/* ════════════════════════════════════════════
+   MOBILE PANELS
+════════════════════════════════════════════ */
+let _panel=null;
+function openPanel(w){
+  if(_panel===w){closeAllPanels();return;}
+  closeAllPanels(false); _panel=w;
+  document.getElementById(w==='sidebar'?'sidebar':'music-sidebar').classList.add('open');
+  document.getElementById('overlay').classList.add('show');
+}
+function closeAllPanels(rst=true){
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('music-sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('show');
+  if(rst) _panel=null;
+}
+let _ham='sidebar';
+function toggleMobilePanels(){
+  if(_panel){closeAllPanels();return;}
+  openPanel(_ham); _ham=_ham==='sidebar'?'music':'sidebar';
+}
+function checkMobile(){
+  const m=window.innerWidth<=720;
+  document.getElementById('btn-mob-doc').style.display=m?'':'none';
+  document.getElementById('btn-mob-mus').style.display=m?'':'none';
+}
+window.addEventListener('resize',()=>{checkMobile();closeAllPanels();});
+checkMobile();
+
+/* ════════════════════════════════════════════
+   KEYBOARD SHORTCUTS
+════════════════════════════════════════════ */
+document.addEventListener('keydown', e => {
+  if (['INPUT','TEXTAREA'].includes(e.target.tagName)) return;
+  if (e.code==='Space')                  { e.preventDefault(); togglePlay(); }
+  if (e.code==='ArrowRight'&&e.altKey)   nextTrack();
+  if (e.code==='ArrowLeft' &&e.altKey)   prevTrack();
+  if (e.code==='Equal' &&e.ctrlKey)      { e.preventDefault(); zoomChange(.1); }
+  if (e.code==='Minus' &&e.ctrlKey)      { e.preventDefault(); zoomChange(-.1); }
+  if (e.code==='Digit0'&&e.ctrlKey)      { e.preventDefault(); resetZoom(); }
+  if (e.code==='Escape')                 closeAllPanels();
+});
+
+/* ════════════════════════════════════════════
+   HELPERS
+════════════════════════════════════════════ */
+function emptyHTML() {
+  return `<div id="empty-state">
+    <div class="es-icon">📂</div>
+    <p>BELUM ADA<br/>DOKUMEN DIPILIH</p>
+    <small>Upload &amp; pilih dokumen dari panel kiri</small>
+  </div>`;
+}
+
+/* ════════════════════════════════════════════
+   INIT — buka DB, muat kedua folder dari IndexedDB
+════════════════════════════════════════════ */
+(async function init() {
+  try {
+    db = await openDB();
+    // Muat kedua folder secara paralel
+    await Promise.all([loadDocuments(), loadMusics()]);
+    await updateStorageInfo();
+
+    const nd = documents.length, nm = musics.length;
+    if (nd+nm > 0) {
+      toast(`✅ Folder dimuat: ${nd} dokumen · ${nm} musik`,'ok',3500);
+    } else {
+      setTimeout(()=>toast('👋 Selamat datang di NeoReader! Upload dokumen & musik untuk mulai.','',4500),400);
+    }
+  } catch(err) {
+    console.error(err);
+    toast('❌ Gagal membuka IndexedDB. Coba refresh halaman.','err',8000);
+  }
+})();
+</script>
+</body>
+</html>
