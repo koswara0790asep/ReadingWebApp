@@ -191,16 +191,6 @@ index.html
 
 ---
 
-## 📸 Screenshot
-
-Tambahkan preview di sini:
-
-```md
-![NeoReader Preview](assets/preview.png)
-```
-
----
-
 ## 🤝 Kontribusi
 
 Kontribusi sangat terbuka!
